@@ -18,7 +18,7 @@ CHAT_ID = PUT_CHAT_ID_HERE
 
 ```commandline
 $ python3 - m pip install -r requirements.txt
-$ python3 min.py
+$ python3 main.py
 ```
 
 ### **Дополнительная информация**
