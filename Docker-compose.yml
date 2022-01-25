@@ -1,0 +1,6 @@
+version: '3'
+
+services:
+  notification_bot:
+    build: .
+    container_name: notification_bot
