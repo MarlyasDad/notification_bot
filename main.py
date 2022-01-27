@@ -24,9 +24,9 @@ class LongPollingFound:
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-DEVMAN_TOKEN = config["notification_bot"].get("DEVMAN_TOKEN")
-TELEGRAM_TOKEN = config["notification_bot"].get("TELEGRAM_TOKEN")
-CHAT_ID = config["notification_bot"].get("CHAT_ID")
+DVMN_TOKEN = config["notification_bot"].get("DVMN_TOKEN")
+TG_TOKEN = config["notification_bot"].get("TG_TOKEN")
+TG_CHAT_ID = config["notification_bot"].get("TG_CHAT_ID")
 
 SUCCESS_MESSAGE = "Преподавателю всё понравилось, можно приступать" \
                   " к следующему уроку!\n"
@@ -36,14 +36,14 @@ FAILURE_MESSAGE = "К сожалению, в работе нашлись оши�
 LONG_POLL_URL = "https://dvmn.org/api/long_polling/"
 
 headers = {
-    "Authorization": f"Token {DEVMAN_TOKEN}"
+    "Authorization": f"Token {DVMN_TOKEN}"
 }
 
 payload = {}
 
 
 def main():
-    bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    bot = telegram.Bot(token=TG_TOKEN)
 
     while True:
         try:
@@ -55,12 +55,12 @@ def main():
             sleep(30)
             continue
 
-        response_loads = response.json()
+        long_polling_response: dict = response.json()
 
-        if response_loads.get("status") == "found":
-            long_response = LongPollingFound(**response_loads)
-            long_timestamp = long_response.last_attempt_timestamp
-            for attempt in long_response.new_attempts:
+        if long_polling_response.get("status") == "found":
+            tg_response = LongPollingFound(**long_polling_response)
+            payload["timestamp"] = tg_response.last_attempt_timestamp
+            for attempt in tg_response.new_attempts:
                 if attempt.get("is_negative"):
                     task_status = FAILURE_MESSAGE
                 else:
@@ -69,13 +69,11 @@ def main():
                 lesson_title = attempt.get('lesson_title')
                 title = f"У вас проверили работу \"{lesson_title}\"\n\n"
 
-                message = title + task_status + attempt.get("lesson_url")
-                bot.send_message(chat_id=CHAT_ID, text=message)
+                message = f"{title}{task_status}{attempt.get('lesson_url')}"
+                bot.send_message(chat_id=TG_CHAT_ID, text=message)
         else:
-            long_response = LongPollingTimeout(**response_loads)
-            long_timestamp = long_response.timestamp_to_request
-
-        payload["timestamp"] = long_timestamp
+            tg_response = LongPollingTimeout(**long_polling_response)
+            payload["timestamp"] = tg_response.timestamp_to_request
 
 
 if __name__ == "__main__":

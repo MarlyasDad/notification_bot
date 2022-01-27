@@ -9,9 +9,9 @@
 Переименуйте файл config.example.ini в config.ini и заполните своими значениями
 
 ```ini
-DEVMAN_TOKEN = PUT_DVMN_TOKEN_HERE
-TELEGRAM_TOKEN = PUT_TELEGRAM_TOKEN_HERE
-CHAT_ID = PUT_CHAT_ID_HERE
+DVMN_TOKEN = PUT_DVMN_TOKEN_HERE
+TG_TOKEN = PUT_TELEGRAM_TOKEN_HERE
+TG_CHAT_ID = PUT_TELEGRAM_CHAT_ID_HERE
 ```
 
 После этого установите необходимые пакеты и запустите скрипт
