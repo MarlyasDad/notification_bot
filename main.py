@@ -3,6 +3,7 @@ from time import sleep
 import requests
 from dataclasses import dataclass
 import configparser
+import logging
 import telegram
 
 
@@ -20,6 +21,14 @@ class LongPollingFound:
     new_attempts: List[dict]
     request_query: list
 
+
+logging.basicConfig(
+    format="[%(asctime)s] %(filename)s[LINE:%(lineno)d]# %(levelname)-8s "
+           "%(message)s",
+    filename="bot_log.txt",
+    level=logging.INFO
+)
+logger = logging.getLogger(__file__)
 
 config = configparser.ConfigParser()
 config.read('config.ini')
@@ -49,18 +58,23 @@ def main():
         try:
             response = requests.get(LONG_POLL_URL, headers=headers,
                                     params=payload, timeout=95)
+            response.raise_for_status()
         except requests.exceptions.ReadTimeout:
             continue
         except requests.exceptions.ConnectionError:
             sleep(30)
             continue
+        except requests.exceptions.HTTPError as ex:
+            logger.warning(ex)
+            sleep(30)
+            continue
 
-        long_polling_response: dict = response.json()
+        long_polling_content: dict = response.json()
 
-        if long_polling_response.get("status") == "found":
-            tg_response = LongPollingFound(**long_polling_response)
-            payload["timestamp"] = tg_response.last_attempt_timestamp
-            for attempt in tg_response.new_attempts:
+        if long_polling_content.get("status") == "found":
+            dvmn_tasks_content = LongPollingFound(**long_polling_content)
+            payload["timestamp"] = dvmn_tasks_content.last_attempt_timestamp
+            for attempt in dvmn_tasks_content.new_attempts:
                 if attempt.get("is_negative"):
                     task_status = FAILURE_MESSAGE
                 else:
@@ -72,8 +86,8 @@ def main():
                 message = f"{title}{task_status}{attempt.get('lesson_url')}"
                 bot.send_message(chat_id=TG_CHAT_ID, text=message)
         else:
-            tg_response = LongPollingTimeout(**long_polling_response)
-            payload["timestamp"] = tg_response.timestamp_to_request
+            dvmn_tasks_content = LongPollingTimeout(**long_polling_content)
+            payload["timestamp"] = dvmn_tasks_content.timestamp_to_request
 
 
 if __name__ == "__main__":
