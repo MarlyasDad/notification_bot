@@ -69,12 +69,12 @@ def main():
             sleep(30)
             continue
 
-        long_polling_content: dict = response.json()
+        dvmn_new_attempts: dict = response.json()
 
-        if long_polling_content.get("status") == "found":
-            dvmn_tasks_content = LongPollingFound(**long_polling_content)
-            payload["timestamp"] = dvmn_tasks_content.last_attempt_timestamp
-            for attempt in dvmn_tasks_content.new_attempts:
+        if dvmn_new_attempts.get("status") == "found":
+            attempts = LongPollingFound(**dvmn_new_attempts)
+            payload["timestamp"] = attempts.last_attempt_timestamp
+            for attempt in attempts.new_attempts:
                 if attempt.get("is_negative"):
                     task_status = FAILURE_MESSAGE
                 else:
@@ -86,8 +86,8 @@ def main():
                 message = f"{title}{task_status}{attempt.get('lesson_url')}"
                 bot.send_message(chat_id=TG_CHAT_ID, text=message)
         else:
-            dvmn_tasks_content = LongPollingTimeout(**long_polling_content)
-            payload["timestamp"] = dvmn_tasks_content.timestamp_to_request
+            attempts = LongPollingTimeout(**dvmn_new_attempts)
+            payload["timestamp"] = attempts.timestamp_to_request
 
 
 if __name__ == "__main__":
