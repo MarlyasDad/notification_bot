@@ -1,3 +1,4 @@
+import os
 from typing import List
 from time import sleep
 import requests
@@ -22,6 +23,17 @@ class LongPollingFound:
     request_query: list
 
 
+def read_config(name, config_file):
+    """
+    Читаем конфиги из configparser или из environments.
+    В приоритете файл, потом переменные окружения
+    """
+    config_value = config_file["notification_bot"].get(name)
+    if not config_value:
+        os.environ.get(name)
+    return config_value
+
+
 logging.basicConfig(
     format="[%(asctime)s] %(filename)s[LINE:%(lineno)d]# %(levelname)-8s "
            "%(message)s",
@@ -33,9 +45,9 @@ logger = logging.getLogger(__file__)
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-DVMN_TOKEN = config["notification_bot"].get("DVMN_TOKEN")
-TG_TOKEN = config["notification_bot"].get("TG_TOKEN")
-TG_CHAT_ID = config["notification_bot"].get("TG_CHAT_ID")
+DVMN_TOKEN = read_config("DVMN_TOKEN", config)
+TG_TOKEN = read_config("TG_TOKEN", config)
+TG_CHAT_ID = read_config("TG_CHAT_ID", config)
 
 SUCCESS_MESSAGE = "Преподавателю всё понравилось, можно приступать" \
                   " к следующему уроку!\n"
