@@ -28,9 +28,10 @@ def read_config(name, config_file):
     Читаем конфиги из configparser или из environments.
     В приоритете файл, потом переменные окружения
     """
-    config_value = config_file["notification_bot"].get(name)
-    if not config_value:
-        os.environ.get(name)
+    try:
+        config_value = config_file["notification_bot"].get(name)
+    except KeyError:
+        config_value = os.environ.get(name)
     return config_value
 
 
