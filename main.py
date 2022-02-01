@@ -8,6 +8,14 @@ import logging
 import telegram
 
 
+LONG_POLL_URL = "https://dvmn.org/api/long_polling/"
+STATUS_TEXTS = {
+    "success": "Преподавателю всё понравилось, можно приступать "
+               "к следующему уроку!\n",
+    "failure": "К сожалению, в работе нашлись ошибки.\n"
+}
+
+
 @dataclass
 class LongPollingTimeout:
     status: str
@@ -23,11 +31,27 @@ class LongPollingFound:
     request_query: list
 
 
-def read_config(name, config_file):
-    """
-    Читаем конфиги из configparser или из environments.
-    В приоритете файл, потом переменные окружения
-    """
+class TelegramLogsHandler(logging.Handler):
+
+    def __init__(self, tg_bot, chat_id):
+        super().__init__()
+        self.chat_id = chat_id
+        self.tg_bot = tg_bot
+
+    def emit(self, record):
+        log_entry = self.format(record)
+        print(log_entry)
+        self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry)
+
+
+def setup_logger(tg_bot: telegram.bot.Bot, chat_id: str):
+    new_logger = logging.getLogger()
+    new_logger.setLevel(logging.INFO)
+    new_logger.addHandler(TelegramLogsHandler(tg_bot, chat_id))
+    return new_logger
+
+
+def set_config(name, config_file):
     try:
         config_value = config_file["notification_bot"].get(name)
     except KeyError:
@@ -35,50 +59,30 @@ def read_config(name, config_file):
     return config_value
 
 
-logging.basicConfig(
-    format="[%(asctime)s] %(filename)s[LINE:%(lineno)d]# %(levelname)-8s "
-           "%(message)s",
-    filename="bot_log.txt",
-    level=logging.INFO
-)
-logger = logging.getLogger(__file__)
+def main(tg_bot: telegram.bot.Bot, status_texts: dict, long_poll_url: str,
+         dvmn_token: str, tg_chat_id: str):
+    payload = {}
 
-config = configparser.ConfigParser()
-config.read('config.ini')
-
-DVMN_TOKEN = read_config("DVMN_TOKEN", config)
-TG_TOKEN = read_config("TG_TOKEN", config)
-TG_CHAT_ID = read_config("TG_CHAT_ID", config)
-
-SUCCESS_MESSAGE = "Преподавателю всё понравилось, можно приступать" \
-                  " к следующему уроку!\n"
-FAILURE_MESSAGE = "К сожалению, в работе нашлись ошибки.\n"
-
-
-LONG_POLL_URL = "https://dvmn.org/api/long_polling/"
-
-headers = {
-    "Authorization": f"Token {DVMN_TOKEN}"
-}
-
-payload = {}
-
-
-def main():
-    bot = telegram.Bot(token=TG_TOKEN)
+    headers = {
+        "Authorization": f"Token {dvmn_token}"
+    }
+    logger.info("Бот запущен")
 
     while True:
         try:
-            response = requests.get(LONG_POLL_URL, headers=headers,
+            response = requests.get(long_poll_url, headers=headers,
                                     params=payload, timeout=95)
             response.raise_for_status()
         except requests.exceptions.ReadTimeout:
+            logger.warning(f"Таймаут соединения с {long_poll_url}")
+            sleep(30)
             continue
         except requests.exceptions.ConnectionError:
+            logger.warning(f"Ошибка соединения с {long_poll_url}")
             sleep(30)
             continue
         except requests.exceptions.HTTPError as ex:
-            logger.warning(ex)
+            logger.warning(f"Сервер ответил ошибкой {ex}")
             sleep(30)
             continue
 
@@ -89,22 +93,32 @@ def main():
             payload["timestamp"] = attempts.last_attempt_timestamp
             for attempt in attempts.new_attempts:
                 if attempt.get("is_negative"):
-                    task_status = FAILURE_MESSAGE
+                    task_status = status_texts["failure"]
                 else:
-                    task_status = SUCCESS_MESSAGE
+                    task_status = status_texts["success"]
 
                 lesson_title = attempt.get('lesson_title')
                 title = f"У вас проверили работу \"{lesson_title}\"\n\n"
 
                 message = f"{title}{task_status}{attempt.get('lesson_url')}"
-                bot.send_message(chat_id=TG_CHAT_ID, text=message)
+                tg_bot.send_message(chat_id=tg_chat_id, text=message)
         else:
             attempts = LongPollingTimeout(**dvmn_new_attempts)
             payload["timestamp"] = attempts.timestamp_to_request
 
 
 if __name__ == "__main__":
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+
+    DVMN_TOKEN = set_config("DVMN_TOKEN", config)
+    TG_TOKEN = set_config("TG_TOKEN", config)
+    TG_CHAT_ID = set_config("TG_CHAT_ID", config)
+
+    bot = telegram.Bot(token=TG_TOKEN)
+    logger = setup_logger(bot, TG_CHAT_ID)
+
     try:
-        main()
+        main(bot, STATUS_TEXTS, LONG_POLL_URL, DVMN_TOKEN, TG_CHAT_ID)
     except KeyboardInterrupt:
-        print("Бот был остановлен пользователем")
+        logger.info("Бот остановлен")

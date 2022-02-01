@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 /config.ini
 /.idea/
+/bot_log.txt
