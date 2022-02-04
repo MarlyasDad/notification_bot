@@ -3,17 +3,16 @@ from typing import List
 from time import sleep
 import requests
 from dataclasses import dataclass
-import configparser
 import logging
 import telegram
+from dotenv import load_dotenv
 
 
-LONG_POLL_URL = "https://dvmn.org/api/long_polling/"
-STATUS_TEXTS = {
-    "success": "Преподавателю всё понравилось, можно приступать "
-               "к следующему уроку!\n",
-    "failure": "К сожалению, в работе нашлись ошибки.\n"
-}
+@dataclass
+class BotConfig:
+    dvmn_token: str
+    tg_token: str
+    tg_chat_id: str
 
 
 @dataclass
@@ -40,7 +39,6 @@ class TelegramLogsHandler(logging.Handler):
 
     def emit(self, record):
         log_entry = self.format(record)
-        print(log_entry)
         self.tg_bot.send_message(chat_id=self.chat_id, text=log_entry)
 
 
@@ -51,22 +49,30 @@ def setup_logger(tg_bot: telegram.bot.Bot, chat_id: str):
     return new_logger
 
 
-def set_config(name, config_file):
-    try:
-        config_value = config_file["notification_bot"].get(name)
-    except KeyError:
-        config_value = os.environ.get(name)
-    return config_value
+def setup_configs() -> BotConfig:
+    dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
+
+    return BotConfig(
+        dvmn_token=os.environ.get("DVMN_TOKEN"),
+        tg_token=os.environ.get("TG_TOKEN"),
+        tg_chat_id=os.environ.get("TG_CHAT_ID"),
+    )
 
 
-def main(tg_bot: telegram.bot.Bot, status_texts: dict, long_poll_url: str,
-         dvmn_token: str, tg_chat_id: str):
-    payload = {}
-
-    headers = {
-        "Authorization": f"Token {dvmn_token}"
+def dvmn_poller(logger: logging.Logger, tg_bot: telegram.bot.Bot,
+                configs: BotConfig):
+    long_poll_url = "https://dvmn.org/api/long_polling/"
+    status_texts = {
+        "success": "Преподавателю всё понравилось, можно приступать "
+                   "к следующему уроку!\n",
+        "failure": "К сожалению, в работе нашлись ошибки.\n"
     }
-    logger.info("Бот запущен")
+    headers = {
+        "Authorization": f"Token {configs.dvmn_token}"
+    }
+    payload = {}
 
     while True:
         try:
@@ -101,24 +107,24 @@ def main(tg_bot: telegram.bot.Bot, status_texts: dict, long_poll_url: str,
                 title = f"У вас проверили работу \"{lesson_title}\"\n\n"
 
                 message = f"{title}{task_status}{attempt.get('lesson_url')}"
-                tg_bot.send_message(chat_id=tg_chat_id, text=message)
+                tg_bot.send_message(chat_id=configs.tg_chat_id, text=message)
         else:
             attempts = LongPollingTimeout(**dvmn_new_attempts)
             payload["timestamp"] = attempts.timestamp_to_request
 
 
-if __name__ == "__main__":
-    config = configparser.ConfigParser()
-    config.read('config.ini')
+def main():
+    configs: BotConfig = setup_configs()
 
-    DVMN_TOKEN = set_config("DVMN_TOKEN", config)
-    TG_TOKEN = set_config("TG_TOKEN", config)
-    TG_CHAT_ID = set_config("TG_CHAT_ID", config)
+    tg_bot = telegram.Bot(token=configs.tg_token)
+    logger = setup_logger(tg_bot, configs.tg_chat_id)
 
-    bot = telegram.Bot(token=TG_TOKEN)
-    logger = setup_logger(bot, TG_CHAT_ID)
-
+    logger.info("Бот запущен")
     try:
-        main(bot, STATUS_TEXTS, LONG_POLL_URL, DVMN_TOKEN, TG_CHAT_ID)
+        dvmn_poller(logger, tg_bot, configs)
     except KeyboardInterrupt:
         logger.info("Бот остановлен")
+
+
+if __name__ == "__main__":
+    main()
